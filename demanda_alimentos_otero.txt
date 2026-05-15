@@ -18,7 +18,7 @@ Ley provincial N° 10.668, ante el mediador Dr. Sergio Carlos Guillermo
 Valdamarin (Mat. CMARC STJER N° 0155), identificada como "Otero Verónica
 Beatriz – Delgado Jorge Miguel s/ Alimentos".
 
-La misma concluyó sin acuerdo [COMPLETAR MOTIVO DEL FRACASO DE LA MEDIACIÓN],
+La misma concluyó sin acuerdo por incomparecencia del demandado,
 según consta en el Acta Final suscripta y certificada por el Centro de
 Mediación, la que se acompaña como prueba documental. En consecuencia, se
 encuentra habilitada la instancia judicial (art. 4° Ley 9776), por lo que la
@@ -243,12 +243,12 @@ B) Testimonial
 Ofrezco los siguientes testigos, quienes podrán dar cuenta del cuidado personal
 ejercido en exclusividad por la actora, de la falta de contribución del
 demandado y de la situación económica de éste:
-1) [COMPLETAR NOMBRE Y APELLIDO], DNI [COMPLETAR DNI], con domicilio en
-   [COMPLETAR DOMICILIO].
-2) [COMPLETAR NOMBRE Y APELLIDO], DNI [COMPLETAR DNI], con domicilio en
-   [COMPLETAR DOMICILIO].
-3) [COMPLETAR NOMBRE Y APELLIDO], DNI [COMPLETAR DNI], con domicilio en
-   [COMPLETAR DOMICILIO].
+1) __________________________, DNI N° ____________, con domicilio en
+   ______________________________________________________________.
+2) __________________________, DNI N° ____________, con domicilio en
+   ______________________________________________________________.
+3) __________________________, DNI N° ____________, con domicilio en
+   ______________________________________________________________.
 
 C) Informativa
 
@@ -326,8 +326,5 @@ Reglamento de Presentaciones Electrónicas.
 ================================================================================
 PENDIENTE ANTES DE PRESENTAR:
 ================================================================================
-[ ] Verificar CUIL 27-34605239-8 (calculado, confirmar con AFIP/ARCA)
-[ ] Motivo del fracaso de la mediación (falta de acuerdo / falta de
-    comparecencia / etc.)
-[ ] Datos de hasta 3 testigos: nombre, DNI y domicilio de cada uno
+[ ] Completar datos de los 3 testigos (nombre, DNI y domicilio)
 ================================================================================
