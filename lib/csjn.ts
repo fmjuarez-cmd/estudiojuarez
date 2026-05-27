@@ -1,48 +1,95 @@
 import type { Fallo, SearchFilters } from "./types";
 
-// CSJN public consultation system
-const CSJN_BASE = "https://sjconsulta.csjn.gov.ar/sjconsulta";
+// CSJN — Sistema de Jurisprudencia (nuevo portal: https://sj.csjn.gov.ar/homeSJ/)
+// La SPA consume una API JSON; intentamos esa API y caemos a parsing HTML.
+const CSJN_BASE = "https://sj.csjn.gov.ar";
+export const CSJN_HOME = `${CSJN_BASE}/homeSJ/`;
 const SAIJ_BASE = "https://www.saij.gob.ar";
+
+export function buildCSJNSearchUrl(query: string): string {
+  // Ruta de búsqueda de la SPA (hash routing). El usuario llega con el término cargado.
+  return `${CSJN_HOME}#/buscar?texto=${encodeURIComponent(query)}`;
+}
 
 export async function searchCSJN(filters: SearchFilters): Promise<{ fallos: Fallo[]; total: number }> {
   try {
     const params = new URLSearchParams({
-      pageNumber: String((filters.pagina || 1) - 1),
-      pageSize: "10",
-      highLight: "true",
+      texto: filters.query || "",
+      pagina: String((filters.pagina || 1) - 1),
+      cantidad: "10",
     });
-
-    if (filters.query) params.append("palabrasClave", filters.query);
     if (filters.fechaDesde) params.append("fechaDesde", filters.fechaDesde);
     if (filters.fechaHasta) params.append("fechaHasta", filters.fechaHasta);
 
-    const response = await fetch(
-      `${CSJN_BASE}/documentos/listarDocumentosInputAction.html?${params}`,
-      {
-        headers: { Accept: "text/html,application/xhtml+xml" },
-        signal: AbortSignal.timeout(10000),
-      }
-    );
+    const response = await fetch(`${CSJN_BASE}/sj/busqueda?${params}`, {
+      headers: {
+        Accept: "application/json, text/html;q=0.9, */*;q=0.8",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
 
     if (!response.ok) throw new Error("CSJN no disponible");
 
-    const html = await response.text();
-    return parseCSJNResults(html, filters.query || "");
+    const text = await response.text();
+    return parseCSJNResults(text, filters.query || "");
   } catch {
     // Return empty on network error so other sources can still work
     return { fallos: [], total: 0 };
   }
 }
 
-function parseCSJNResults(html: string, query: string): { fallos: Fallo[]; total: number } {
-  // Simple regex-based parsing of CSJN HTML structure
+// Acepta tanto la respuesta JSON de la API nueva como HTML (fallback).
+export function parseCSJNResults(raw: string, query: string): { fallos: Fallo[]; total: number } {
+  const trimmed = raw.trimStart();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      return parseCSJNJson(JSON.parse(raw) as unknown, query);
+    } catch {
+      // cae al parser HTML
+    }
+  }
+  return parseCSJNHtml(raw, query);
+}
+
+function parseCSJNJson(data: unknown, query: string): { fallos: Fallo[]; total: number } {
+  const root = (data ?? {}) as Record<string, unknown>;
+  const list = (root.resultados ||
+    root.documentos ||
+    root.docs ||
+    root.items ||
+    (Array.isArray(data) ? data : [])) as Record<string, unknown>[];
+
   const fallos: Fallo[] = [];
 
-  // Match result blocks in CSJN response
+  for (const item of list.slice(0, 10)) {
+    const titulo =
+      pickString(item, ["caratula", "titulo", "sumario", "voces"]) || "Fallo CSJN";
+    fallos.push({
+      id: `csjn-${pickString(item, ["id", "uuid", "idFallo"]) || Math.random()}`,
+      titulo,
+      fecha: pickString(item, ["fecha", "fechaFallo", "fecha-alta"]) || "",
+      tribunal: "Corte Suprema de Justicia de la Nación",
+      provincia: "nacional",
+      fuero: "federal",
+      materia: pickString(item, ["materia"]) || detectMateria(titulo),
+      sumario: pickString(item, ["sumario", "resumen", "voces"]) || "",
+      url: buildCSJNSearchUrl(query),
+      fuente: "CSJN",
+    });
+  }
+
+  const total = Number(root.total ?? root.cantidad ?? root.totalResultados ?? fallos.length);
+  return { fallos, total: Number.isFinite(total) ? total : fallos.length };
+}
+
+function parseCSJNHtml(html: string, query: string): { fallos: Fallo[]; total: number } {
+  const fallos: Fallo[] = [];
+
   const blockRegex = /class="resultados[^"]*"[\s\S]*?(?=class="resultados|$)/gi;
   const titleRegex = /title="([^"]+)"/i;
   const dateRegex = /(\d{2}\/\d{2}\/\d{4})/;
-  const linkRegex = /href="([^"]*listarDocumentos[^"]+)"/i;
+  const linkRegex = /href="([^"]*(?:listarDocumentos|fallo)[^"]+)"/i;
 
   const blocks = html.match(blockRegex) || [];
 
@@ -61,14 +108,13 @@ function parseCSJNResults(html: string, query: string): { fallos: Fallo[]; total
         provincia: "nacional",
         fuero: "federal",
         materia: detectMateria(titleMatch[1]),
-        sumario: `Fallo de la CSJN relacionado con: ${query}`,
-        url: linkMatch ? `${CSJN_BASE}${linkMatch[1]}` : `${CSJN_BASE}/documentos/listarDocumentosInputAction.html`,
+        sumario: query ? `Fallo de la CSJN relacionado con: ${query}` : "Fallo de la CSJN",
+        url: linkMatch && linkMatch[1].startsWith("http") ? linkMatch[1] : buildCSJNSearchUrl(query),
         fuente: "CSJN",
       });
     }
   }
 
-  // Try to get total count
   const totalMatch = html.match(/(\d+)\s+(?:resultado|fallo|document)/i);
   const total = totalMatch ? parseInt(totalMatch[1]) : fallos.length;
 
@@ -77,21 +123,25 @@ function parseCSJNResults(html: string, query: string): { fallos: Fallo[]; total
 
 export async function searchSAIJ(filters: SearchFilters): Promise<{ fallos: Fallo[]; total: number }> {
   try {
+    // SAIJ's search endpoint returns JSON. The `f` (facet) param filters by
+    // document type; `o` is the offset, `p` the page size.
+    const facets = ["Total|Tipo de Documento/Jurisprudencia"];
+    if (filters.provincia && filters.provincia !== "nacional") {
+      facets.push(`Total|Jurisdicción/${mapProvinciaToSAIJ(filters.provincia)}`);
+    }
+
+    const offset = ((filters.pagina || 1) - 1) * 10;
     const params = new URLSearchParams({
-      tipo: "jurisprudencia",
-      "form-type": "basic",
-      buscar: "true",
+      o: String(offset),
+      p: "10",
+      f: facets.join("&f="),
+      t: filters.query || "",
+      v: "colapsada",
     });
 
-    if (filters.query) params.append("palabras-clave", filters.query);
-    if (filters.provincia && filters.provincia !== "nacional") {
-      params.append("jurisdiccion", mapProvinciaToSAIJ(filters.provincia));
-    }
-    if (filters.fuero) params.append("rama", filters.fuero);
-
-    const response = await fetch(`${SAIJ_BASE}/busqueda-basica?${params}`, {
+    const response = await fetch(`${SAIJ_BASE}/busqueda?${params}`, {
       headers: {
-        Accept: "application/json",
+        Accept: "application/json, text/javascript, */*; q=0.01",
         "X-Requested-With": "XMLHttpRequest",
       },
       signal: AbortSignal.timeout(10000),
@@ -99,45 +149,119 @@ export async function searchSAIJ(filters: SearchFilters): Promise<{ fallos: Fall
 
     if (!response.ok) throw new Error("SAIJ no disponible");
 
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      const data = await response.json();
-      return parseSAIJJson(data);
-    }
-
-    const html = await response.text();
-    return parseSAIJHtml(html, filters);
+    const text = await response.text();
+    return parseSAIJResponse(text, filters);
   } catch {
     return { fallos: [], total: 0 };
   }
 }
 
-function parseSAIJJson(data: Record<string, unknown>): { fallos: Fallo[]; total: number } {
-  const fallos: Fallo[] = [];
-  const items = (data.items || data.results || data.documentos || []) as Record<string, unknown>[];
+// SAIJ quirk: the search endpoint returns JSON where each result's
+// `documentAbstract` is itself a JSON-encoded string that must be parsed
+// again to reach the actual document content. This parser is defensive and
+// also falls back to legacy HTML parsing if the response is not JSON.
+export function parseSAIJResponse(
+  raw: string,
+  filters: SearchFilters
+): { fallos: Fallo[]; total: number } {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return parseSAIJHtml(raw, filters);
+  }
 
-  for (const item of items.slice(0, 10)) {
+  const root = data as Record<string, unknown>;
+  const searchResults = (root.searchResults || root) as Record<string, unknown>;
+  const list = (searchResults.documentResultList ||
+    root.items ||
+    root.results ||
+    root.documentos ||
+    []) as Record<string, unknown>[];
+
+  const fallos: Fallo[] = [];
+
+  for (const entry of list.slice(0, 10)) {
+    const content = extractSAIJContent(entry);
+    if (!content) continue;
+
+    const titulo = pickString(content, ["titulo", "title", "nombre", "caratula"]) || "Sin título";
+    const jurisdiccion = pickJurisdiccion(content);
+
     fallos.push({
-      id: `saij-${item.id || Math.random()}`,
-      titulo: String(item.titulo || item.title || item.nombre || "Sin título"),
-      fecha: String(item.fecha || item.date || ""),
-      tribunal: String(item.tribunal || item.organismo || ""),
-      provincia: String(item.jurisdiccion || item.provincia || ""),
-      fuero: String(item.rama || item.fuero || ""),
-      materia: String(item.materia || item.tema || ""),
-      sumario: String(item.sumario || item.resumen || item.descripcion || ""),
-      url: item.url ? `${SAIJ_BASE}${item.url}` : undefined,
+      id: `saij-${pickString(content, ["uuid", "id", "numero-interno"]) || Math.random()}`,
+      titulo,
+      fecha: pickString(content, ["fecha", "fecha-alta", "date"]) || "",
+      tribunal: pickString(content, ["tribunal", "organismo", "instancia"]) || "",
+      provincia: jurisdiccion || filters.provincia || "",
+      fuero: pickString(content, ["rama", "fuero"]) || filters.fuero || "",
+      materia: pickString(content, ["materia", "tema"]) || filters.materia || detectMateria(titulo),
+      sumario: pickString(content, ["sumario", "resumen", "descripcion", "texto"]) || "",
+      url: buildSAIJUrl(content),
       fuente: "SAIJ",
     });
   }
 
-  return { fallos, total: Number(data.total || fallos.length) };
+  const total = Number(
+    searchResults.totalNumberOfResults ?? root.total ?? fallos.length
+  );
+
+  return { fallos, total: Number.isFinite(total) ? total : fallos.length };
+}
+
+function extractSAIJContent(entry: Record<string, unknown>): Record<string, unknown> | null {
+  // Preferred: documentAbstract is a stringified JSON
+  const abstract = entry.documentAbstract;
+  if (typeof abstract === "string") {
+    try {
+      const parsed = JSON.parse(abstract) as Record<string, unknown>;
+      const doc = parsed.document as Record<string, unknown> | undefined;
+      const content = doc?.content as Record<string, unknown> | undefined;
+      if (content) return content;
+      if (doc) return doc;
+      return parsed;
+    } catch {
+      // fall through
+    }
+  }
+  // Some responses nest content directly
+  const doc = entry.document as Record<string, unknown> | undefined;
+  if (doc?.content) return doc.content as Record<string, unknown>;
+  if (doc) return doc;
+  // Flat entry
+  if (entry.titulo || entry.title) return entry;
+  return null;
+}
+
+function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number") return String(v);
+  }
+  return undefined;
+}
+
+function pickJurisdiccion(content: Record<string, unknown>): string | undefined {
+  const j = content.jurisdiccion;
+  if (typeof j === "string") return normalizeJurisdiccion(j);
+  if (j && typeof j === "object") {
+    const desc = (j as Record<string, unknown>).descripcion;
+    if (typeof desc === "string") return normalizeJurisdiccion(desc);
+  }
+  const prov = content.provincia;
+  if (typeof prov === "string") return normalizeJurisdiccion(prov);
+  return undefined;
+}
+
+function buildSAIJUrl(content: Record<string, unknown>): string {
+  const id = pickString(content, ["uuid", "id", "numero-interno"]);
+  if (id) return `${SAIJ_BASE}/${id}`;
+  return `${SAIJ_BASE}/busqueda?t=jurisprudencia`;
 }
 
 function parseSAIJHtml(html: string, filters: SearchFilters): { fallos: Fallo[]; total: number } {
   const fallos: Fallo[] = [];
-
-  // Extract result entries from SAIJ HTML
   const resultRegex = /<article[^>]*class="[^"]*resultado[^"]*"[^>]*>([\s\S]*?)<\/article>/gi;
   const titleRegex = /<h\d[^>]*>([\s\S]*?)<\/h\d>/i;
   const dateRegex = /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/;
@@ -155,7 +279,7 @@ function parseSAIJHtml(html: string, filters: SearchFilters): { fallos: Fallo[];
       : `Resultado ${count + 1}`;
 
     fallos.push({
-      id: `saij-${count}-${Date.now()}`,
+      id: `saij-html-${count}-${Date.now()}`,
       titulo,
       fecha: dateMatch ? dateMatch[1] : "",
       tribunal: extractTribunal(block),
@@ -163,7 +287,7 @@ function parseSAIJHtml(html: string, filters: SearchFilters): { fallos: Fallo[];
       fuero: filters.fuero || "",
       materia: filters.materia || detectMateria(titulo),
       sumario: extractSumario(block),
-      url: `${SAIJ_BASE}/busqueda-basica?tipo=jurisprudencia&palabras-clave=${encodeURIComponent(filters.query || "")}`,
+      url: `${SAIJ_BASE}/busqueda?t=jurisprudencia`,
       fuente: "SAIJ",
     });
 
@@ -174,7 +298,7 @@ function parseSAIJHtml(html: string, filters: SearchFilters): { fallos: Fallo[];
   return { fallos, total: totalMatch ? parseInt(totalMatch[1]) : fallos.length };
 }
 
-// Fallback: generate demo results when both sources fail (for development/demo)
+// Fallback: clearly-flagged demo results when every source is unreachable.
 export function generateDemoResults(filters: SearchFilters): { fallos: Fallo[]; total: number } {
   const demos: Fallo[] = [
     {
@@ -187,7 +311,7 @@ export function generateDemoResults(filters: SearchFilters): { fallos: Fallo[]; 
       materia: filters.materia || "recurso_extraordinario",
       sumario:
         "La Corte Suprema resolvió en autos caratulados según los términos del recurso extraordinario interpuesto. Se analizan los requisitos de admisibilidad y el fondo de la cuestión planteada en relación con las normas constitucionales invocadas.",
-      url: "https://sjconsulta.csjn.gov.ar/sjconsulta/documentos/listarDocumentosInputAction.html",
+      url: buildCSJNSearchUrl(filters.query || ""),
       fuente: "CSJN",
     },
     {
@@ -202,7 +326,7 @@ export function generateDemoResults(filters: SearchFilters): { fallos: Fallo[]; 
       materia: filters.materia || detectMateria(filters.query || ""),
       sumario:
         "El tribunal resolvió el recurso de apelación interpuesto por la parte actora. Se analiza la aplicación de las normas vigentes al caso concreto y se establecen los criterios de interpretación aplicables.",
-      url: "https://www.saij.gob.ar/busqueda-basica?tipo=jurisprudencia",
+      url: "https://www.saij.gob.ar/busqueda?t=jurisprudencia",
       fuente: "SAIJ",
     },
     {
@@ -215,13 +339,15 @@ export function generateDemoResults(filters: SearchFilters): { fallos: Fallo[]; 
       materia: filters.materia || "daños_perjuicios",
       sumario:
         "La Cámara revocó parcialmente la sentencia de primera instancia. Se determinó la responsabilidad civil del demandado y se fijó el monto indemnizatorio conforme a los criterios jurisprudenciales vigentes.",
-      url: "https://www.saij.gob.ar/busqueda-basica?tipo=jurisprudencia",
+      url: "https://www.saij.gob.ar/busqueda?t=jurisprudencia",
       fuente: "Provincial",
     },
   ];
 
   return {
-    fallos: demos.filter((f) => !filters.provincia || f.provincia === filters.provincia || f.provincia === "nacional"),
+    fallos: demos.filter(
+      (f) => !filters.provincia || f.provincia === filters.provincia || f.provincia === "nacional"
+    ),
     total: 3,
   };
 }
@@ -235,7 +361,7 @@ const FUERO_LABELS: Record<string, string> = {
   contencioso_administrativo: "Contencioso Administrativo",
 };
 
-function detectMateria(texto: string): string {
+export function detectMateria(texto: string): string {
   const lower = texto.toLowerCase();
   if (lower.includes("alimento")) return "alimentos";
   if (lower.includes("divorcio")) return "divorcio";
@@ -250,34 +376,45 @@ function detectMateria(texto: string): string {
   return "";
 }
 
-function mapProvinciaToSAIJ(provincia: string): string {
-  const map: Record<string, string> = {
-    buenos_aires: "Buenos Aires",
-    caba: "Ciudad Autónoma de Buenos Aires",
-    cordoba: "Córdoba",
-    santa_fe: "Santa Fe",
-    mendoza: "Mendoza",
-    tucuman: "Tucumán",
-    salta: "Salta",
-    entre_rios: "Entre Ríos",
-    chaco: "Chaco",
-    corrientes: "Corrientes",
-    misiones: "Misiones",
-    santiago_del_estero: "Santiago del Estero",
-    san_juan: "San Juan",
-    jujuy: "Jujuy",
-    rio_negro: "Río Negro",
-    neuquen: "Neuquén",
-    formosa: "Formosa",
-    san_luis: "San Luis",
-    catamarca: "Catamarca",
-    la_rioja: "La Rioja",
-    la_pampa: "La Pampa",
-    chubut: "Chubut",
-    santa_cruz: "Santa Cruz",
-    tierra_del_fuego: "Tierra del Fuego",
-  };
-  return map[provincia] || provincia;
+const SAIJ_PROVINCIA_MAP: Record<string, string> = {
+  buenos_aires: "Buenos Aires",
+  caba: "Ciudad Autónoma de Buenos Aires",
+  cordoba: "Córdoba",
+  santa_fe: "Santa Fe",
+  mendoza: "Mendoza",
+  tucuman: "Tucumán",
+  salta: "Salta",
+  entre_rios: "Entre Ríos",
+  chaco: "Chaco",
+  corrientes: "Corrientes",
+  misiones: "Misiones",
+  santiago_del_estero: "Santiago del Estero",
+  san_juan: "San Juan",
+  jujuy: "Jujuy",
+  rio_negro: "Río Negro",
+  neuquen: "Neuquén",
+  formosa: "Formosa",
+  san_luis: "San Luis",
+  catamarca: "Catamarca",
+  la_rioja: "La Rioja",
+  la_pampa: "La Pampa",
+  chubut: "Chubut",
+  santa_cruz: "Santa Cruz",
+  tierra_del_fuego: "Tierra del Fuego",
+};
+
+export function mapProvinciaToSAIJ(provincia: string): string {
+  return SAIJ_PROVINCIA_MAP[provincia] || provincia;
+}
+
+// Reverse map SAIJ jurisdiction descriptions back to internal province values.
+function normalizeJurisdiccion(desc: string): string {
+  const lower = desc.toLowerCase().trim();
+  if (lower.includes("nacional") || lower.includes("federal")) return "nacional";
+  for (const [value, label] of Object.entries(SAIJ_PROVINCIA_MAP)) {
+    if (lower === label.toLowerCase()) return value;
+  }
+  return desc;
 }
 
 function extractTribunal(block: string): string {

@@ -3,7 +3,7 @@ import SearchBar from "@/components/SearchBar";
 import ResultCard from "@/components/ResultCard";
 import FilterSidebar from "@/components/FilterSidebar";
 import ExternalSources from "@/components/ExternalSources";
-import { searchCSJN, searchSAIJ, generateDemoResults } from "@/lib/csjn";
+import { searchCSJN, searchSAIJ, generateDemoResults, buildCSJNSearchUrl } from "@/lib/csjn";
 import { searchJUBA, searchCIJ } from "@/lib/sources";
 import type { SearchFilters, Fallo } from "@/lib/types";
 import Link from "next/link";
@@ -227,7 +227,7 @@ export default async function BuscarPage({ searchParams }: PageProps) {
                       <strong>CSJN</strong> consultada como fuente primaria · SAIJ · JUBA · CIJ como
                       subsidiarias.{" "}
                       <a
-                        href={`https://sjconsulta.csjn.gov.ar/sjconsulta/documentos/listarDocumentosInputAction.html?palabrasClave=${encodeURIComponent(filters.query || "")}`}
+                        href={buildCSJNSearchUrl(filters.query || "")}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="underline hover:text-blue-900"

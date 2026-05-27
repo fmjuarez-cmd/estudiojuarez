@@ -16,7 +16,7 @@ const TRIBUNALES = [
   {
     nombre: "CSJN",
     descripcion: "Corte Suprema de Justicia de la Nación",
-    href: "https://sjconsulta.csjn.gov.ar",
+    href: "https://sj.csjn.gov.ar/homeSJ/",
     color: "bg-blue-700",
     icon: "⚖️",
     badge: "Primaria",

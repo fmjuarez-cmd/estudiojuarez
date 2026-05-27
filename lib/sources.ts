@@ -128,8 +128,8 @@ export const EXTERNAL_SOURCES = [
   {
     id: "csjn",
     nombre: "CSJN Jurisprudencia",
-    descripcion: "Secretaría de Jurisprudencia de la Corte Suprema. Indispensable para recursos extraordinarios y doctrina de arbitrariedad.",
-    url: (q: string) => `https://sjconsulta.csjn.gov.ar/sjconsulta/documentos/listarDocumentosInputAction.html?palabrasClave=${encodeURIComponent(q)}`,
+    descripcion: "Sistema de Jurisprudencia de la Corte Suprema (sj.csjn.gov.ar). Indispensable para recursos extraordinarios y doctrina de arbitrariedad.",
+    url: (q: string) => `https://sj.csjn.gov.ar/homeSJ/#/buscar?texto=${encodeURIComponent(q)}`,
     tipo: "publica",
     icon: "⚖️",
   },
