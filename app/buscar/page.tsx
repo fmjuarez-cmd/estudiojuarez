@@ -2,7 +2,9 @@ import { Suspense } from "react";
 import SearchBar from "@/components/SearchBar";
 import ResultCard from "@/components/ResultCard";
 import FilterSidebar from "@/components/FilterSidebar";
+import ExternalSources from "@/components/ExternalSources";
 import { searchCSJN, searchSAIJ, generateDemoResults } from "@/lib/csjn";
+import { searchJUBA, searchCIJ } from "@/lib/sources";
 import type { SearchFilters, Fallo } from "@/lib/types";
 import Link from "next/link";
 
@@ -20,16 +22,22 @@ interface ResultsData {
 }
 
 async function getResults(filters: SearchFilters): Promise<ResultsData> {
-  const [csjnSettled, saijSettled] = await Promise.allSettled([
+  // CSJN primaria; SAIJ, JUBA y CIJ subsidiarias — todas con allSettled
+  const [csjnS, saijS, jubaS, cijS] = await Promise.allSettled([
     searchCSJN(filters),
     searchSAIJ(filters),
+    searchJUBA(filters),
+    searchCIJ(filters),
   ]);
 
-  const csjnResult = csjnSettled.status === "fulfilled" ? csjnSettled.value : { fallos: [], total: 0 };
-  const saijResult = saijSettled.status === "fulfilled" ? saijSettled.value : { fallos: [], total: 0 };
+  const csjn = csjnS.status === "fulfilled" ? csjnS.value : { fallos: [], total: 0 };
+  const saij = saijS.status === "fulfilled" ? saijS.value : { fallos: [], total: 0 };
+  const juba = jubaS.status === "fulfilled" ? jubaS.value : { fallos: [], total: 0 };
+  const cij = cijS.status === "fulfilled" ? cijS.value : { fallos: [], total: 0 };
 
-  let fallos = [...csjnResult.fallos, ...saijResult.fallos];
-  let total = csjnResult.total + saijResult.total;
+  // CSJN always first in results
+  let fallos = [...csjn.fallos, ...saij.fallos, ...juba.fallos, ...cij.fallos];
+  let total = csjn.total + saij.total + juba.total + cij.total;
 
   if (filters.provincia) {
     const prov = filters.provincia;
@@ -123,9 +131,10 @@ export default async function BuscarPage({ searchParams }: PageProps) {
     pagina: parseInt(sp.pagina || "1"),
   };
 
-  const result = filters.query && filters.query.trim().length >= 2
-    ? await getResults(filters)
-    : null;
+  const result =
+    filters.query && filters.query.trim().length >= 2
+      ? await getResults(filters)
+      : null;
 
   const queryTerms = filters.query
     ? filters.query.toLowerCase().split(/\s+/).filter((t) => t.length > 2)
@@ -156,7 +165,7 @@ export default async function BuscarPage({ searchParams }: PageProps) {
             </Suspense>
           </div>
 
-          {/* Results */}
+          {/* Main results column */}
           <main className="flex-1 min-w-0">
             {!filters.query && (
               <div className="text-center py-16 text-gray-500">
@@ -166,22 +175,15 @@ export default async function BuscarPage({ searchParams }: PageProps) {
 
             {result && (
               <>
-                {/* Demo warning — clearly visible */}
+                {/* Demo warning */}
                 {result.isDemo && (
                   <div className="flex items-start gap-3 mb-4 p-4 bg-amber-50 border border-amber-300 rounded-xl text-sm text-amber-900">
                     <span className="text-lg shrink-0">⚠️</span>
                     <div>
-                      <p className="font-semibold">Resultados de ejemplo</p>
+                      <p className="font-semibold">Resultados de ejemplo — no son fallos reales</p>
                       <p className="text-amber-800 mt-0.5">
-                        No se pudo conectar con CSJN ni SAIJ. Estos son resultados ilustrativos —{" "}
-                        <strong>no representan fallos reales</strong>. Accedé directamente a{" "}
-                        <a href="https://sjconsulta.csjn.gov.ar" target="_blank" rel="noopener noreferrer" className="underline font-medium">
-                          sjconsulta.csjn.gov.ar
-                        </a>{" "}
-                        o{" "}
-                        <a href="https://www.saij.gob.ar" target="_blank" rel="noopener noreferrer" className="underline font-medium">
-                          saij.gob.ar
-                        </a>.
+                        No se pudo conectar con CSJN, SAIJ, JUBA ni CIJ. Accedé directamente a las fuentes
+                        desde el panel inferior.
                       </p>
                     </div>
                   </div>
@@ -191,32 +193,46 @@ export default async function BuscarPage({ searchParams }: PageProps) {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-sm text-gray-600">
-                      <span className="font-semibold text-gray-900">{result.total.toLocaleString("es-AR")}</span> resultados para{" "}
+                      <span className="font-semibold text-gray-900">
+                        {result.total.toLocaleString("es-AR")}
+                      </span>{" "}
+                      resultados para{" "}
                       <span className="font-semibold text-blue-700">&quot;{filters.query}&quot;</span>
                     </p>
                     {result.fuentes.length > 0 && (
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Fuentes: {result.fuentes.join(" · ")}
+                        Fuentes consultadas: {result.fuentes.join(" · ")}
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {filters.provincia && (
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
                         📍 {filters.provincia}
                       </span>
                     )}
+                    {filters.fuero && (
+                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                        ⚖️ {filters.fuero}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* CSJN notice (only shown for real results) */}
+                {/* CSJN primaria notice */}
                 {!result.isDemo && (
                   <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                    <span className="text-base">⚖️</span>
+                    <span>⚖️</span>
                     <span>
-                      Incluye <strong>CSJN</strong> como fuente primaria + fuentes secundarias.{" "}
-                      <a href="https://sjconsulta.csjn.gov.ar" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">
-                        Ir directamente a CSJN →
+                      <strong>CSJN</strong> consultada como fuente primaria · SAIJ · JUBA · CIJ como
+                      subsidiarias.{" "}
+                      <a
+                        href={`https://sjconsulta.csjn.gov.ar/sjconsulta/documentos/listarDocumentosInputAction.html?palabrasClave=${encodeURIComponent(filters.query || "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-blue-900"
+                      >
+                        Ir directo a CSJN →
                       </a>
                     </span>
                   </div>
@@ -242,6 +258,9 @@ export default async function BuscarPage({ searchParams }: PageProps) {
                   totalPaginas={result.totalPaginas}
                   searchParams={sp}
                 />
+
+                {/* Panel de fuentes externas — siempre visible */}
+                <ExternalSources query={filters.query || ""} />
               </>
             )}
           </main>

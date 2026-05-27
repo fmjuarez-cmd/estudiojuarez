@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchCSJN, searchSAIJ, generateDemoResults } from "@/lib/csjn";
+import { searchJUBA, searchCIJ } from "@/lib/sources";
 import type { SearchFilters, SearchResult } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
@@ -19,42 +20,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Ingresá al menos 2 caracteres para buscar" }, { status: 400 });
   }
 
-  // Always search CSJN first (primary source), then SAIJ
-  // allSettled so a CSJN outage never silences SAIJ results
-  const [csjnSettled, saijSettled] = await Promise.allSettled([
+  // CSJN siempre primaria; SAIJ, JUBA y CIJ subsidiarias
+  const [csjnS, saijS, jubaS, cijS] = await Promise.allSettled([
     searchCSJN(filters),
     searchSAIJ(filters),
+    searchJUBA(filters),
+    searchCIJ(filters),
   ]);
-  const csjnResult = csjnSettled.status === "fulfilled" ? csjnSettled.value : { fallos: [], total: 0 };
-  const saijResult = saijSettled.status === "fulfilled" ? saijSettled.value : { fallos: [], total: 0 };
 
-  let fallos = [...csjnResult.fallos, ...saijResult.fallos];
-  let total = csjnResult.total + saijResult.total;
+  const csjn = csjnS.status === "fulfilled" ? csjnS.value : { fallos: [], total: 0 };
+  const saij = saijS.status === "fulfilled" ? saijS.value : { fallos: [], total: 0 };
+  const juba = jubaS.status === "fulfilled" ? jubaS.value : { fallos: [], total: 0 };
+  const cij = cijS.status === "fulfilled" ? cijS.value : { fallos: [], total: 0 };
 
-  // Apply province filter client-side if set
+  // CSJN results first, then others
+  let fallos = [...csjn.fallos, ...saij.fallos, ...juba.fallos, ...cij.fallos];
+  let total = csjn.total + saij.total + juba.total + cij.total;
+
   if (filters.provincia) {
     const prov = filters.provincia;
     fallos = fallos.filter(
-      (f) =>
-        !f.provincia ||
-        f.provincia === prov ||
-        (prov !== "nacional" && f.provincia === "nacional") // always include national
+      (f) => !f.provincia || f.provincia === prov || f.provincia === "nacional"
     );
   }
-
-  // Apply fuero filter
   if (filters.fuero) {
-    const fuero = filters.fuero;
-    fallos = fallos.filter((f) => !f.fuero || f.fuero === fuero);
+    fallos = fallos.filter((f) => !f.fuero || f.fuero === filters.fuero);
   }
-
-  // Apply materia filter
   if (filters.materia) {
-    const materia = filters.materia;
-    fallos = fallos.filter((f) => !f.materia || f.materia === materia);
+    fallos = fallos.filter((f) => !f.materia || f.materia === filters.materia);
   }
 
-  // When real sources return nothing, surface demo data clearly flagged
   const isDemo = fallos.length === 0;
   if (isDemo) {
     const demo = generateDemoResults(filters);

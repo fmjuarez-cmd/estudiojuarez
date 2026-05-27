@@ -23,26 +23,58 @@ const TRIBUNALES = [
   },
   {
     nombre: "SAIJ",
-    descripcion: "Sistema Argentino de Información Jurídica",
+    descripcion: "Sistema Argentino de Información Jurídica — gratuito",
     href: "https://www.saij.gob.ar",
     color: "bg-green-700",
     icon: "📚",
     badge: null,
   },
   {
-    nombre: "SCBA",
-    descripcion: "Suprema Corte de Buenos Aires",
-    href: "https://scba.gov.ar",
+    nombre: "JUBA",
+    descripcion: "Base provincial más completa — Suprema Corte de Buenos Aires",
+    href: "https://juba.scba.gov.ar",
     color: "bg-purple-700",
     icon: "🏛️",
     badge: null,
   },
   {
-    nombre: "PJN",
-    descripcion: "Poder Judicial de la Nación",
-    href: "https://www.pjn.gov.ar",
+    nombre: "CIJ",
+    descripcion: "Centro de Información Judicial — PJN",
+    href: "https://www.cij.gov.ar",
     color: "bg-red-700",
-    icon: "🏛️",
+    icon: "📰",
+    badge: null,
+  },
+  {
+    nombre: "Microjuris",
+    descripcion: "Laboral, comercial y modelos de escritos",
+    href: "https://ar.microjuris.com",
+    color: "bg-orange-600",
+    icon: "📋",
+    badge: null,
+  },
+  {
+    nombre: "Jurídica",
+    descripcion: "IA jurídica — integra SAIJ + CSJN + JUBA",
+    href: "https://juridica.com.ar",
+    color: "bg-indigo-700",
+    icon: "🤖",
+    badge: null,
+  },
+  {
+    nombre: "La Ley",
+    descripcion: "Thomson Reuters — estándar premium",
+    href: "https://thomsonreuters.com/es-ar/productos-servicios/legal/la-ley.html",
+    color: "bg-slate-700",
+    icon: "⭐",
+    badge: null,
+  },
+  {
+    nombre: "Cita Forte",
+    descripcion: "Verificación de citas y seguimiento normativo",
+    href: "https://citaforte.com.ar",
+    color: "bg-teal-700",
+    icon: "🔗",
     badge: null,
   },
 ];
@@ -114,7 +146,7 @@ export default function HomePage() {
         {/* Fuentes */}
         <section className="max-w-5xl mx-auto px-4 pb-12">
           <h2 className="text-2xl font-bold text-gray-800 text-center mb-8">Fuentes consultadas</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             {TRIBUNALES.map((t) => (
               <a
                 key={t.nombre}
