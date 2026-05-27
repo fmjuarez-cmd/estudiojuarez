@@ -1,119 +1,59 @@
-import type { Fallo, SearchFilters } from "./types";
-
-// ─── JUBA – Suprema Corte de Buenos Aires ───────────────────────────────────
-export async function searchJUBA(filters: SearchFilters): Promise<{ fallos: Fallo[]; total: number }> {
-  try {
-    const params = new URLSearchParams({ textoBusqueda: filters.query || "" });
-    if (filters.materia) params.append("rama", filters.materia);
-
-    const res = await fetch(`https://juba.scba.gov.ar/VerTextoCompleto.aspx?${params}`, {
-      headers: { Accept: "text/html" },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!res.ok) throw new Error("JUBA no disponible");
-    const html = await res.text();
-    return parseJUBAHtml(html, filters);
-  } catch {
-    return { fallos: [], total: 0 };
-  }
+// ─── Fuentes oficiales primarias (modo lanzador) ────────────────────────────
+// Estos organismos arman sus resultados con JavaScript dentro del navegador y
+// bloquean las peticiones automáticas desde servidores, así que no se pueden
+// "raspar" de forma fiable. En su lugar, abrimos el buscador oficial de cada
+// uno en una pestaña nueva: el sitio corre en el navegador del usuario y
+// muestra los fallos reales. El término de búsqueda se ofrece para copiar.
+export interface LaunchSource {
+  id: string;
+  nombre: string;
+  mejorPara: string;
+  icon: string;
+  color: string;
+  // URL del buscador oficial. Se le pasa el término por si el sitio lo
+  // pre-carga; si no, el usuario lo pega (queda copiado al portapapeles).
+  buildUrl: (query: string) => string;
 }
 
-function parseJUBAHtml(html: string, filters: SearchFilters): { fallos: Fallo[]; total: number } {
-  const fallos: Fallo[] = [];
-  const rowRegex = /<tr[^>]*class="[^"]*fila[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi;
-  const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-
-  let rowMatch;
-  let count = 0;
-
-  while ((rowMatch = rowRegex.exec(html)) !== null && count < 10) {
-    const row = rowMatch[1];
-    const cells: string[] = [];
-    let cellMatch;
-    while ((cellMatch = cellRegex.exec(row)) !== null) {
-      cells.push(cellMatch[1].replace(/<[^>]+>/g, "").trim());
-    }
-    if (cells.length >= 2) {
-      fallos.push({
-        id: `juba-${count}-${Date.now()}`,
-        titulo: cells[0] || `Fallo JUBA ${count + 1}`,
-        fecha: cells[1] || "",
-        tribunal: "Suprema Corte de Buenos Aires",
-        provincia: "buenos_aires",
-        fuero: filters.fuero || "civil",
-        materia: filters.materia || "",
-        sumario: cells[2] || "",
-        url: "https://juba.scba.gov.ar",
-        fuente: "Provincial",
-      });
-      count++;
-    }
-  }
-
-  const totalMatch = html.match(/(\d+)\s+resultado/i);
-  return { fallos, total: totalMatch ? parseInt(totalMatch[1]) : fallos.length };
-}
-
-// ─── CIJ – Centro de Información Judicial ────────────────────────────────────
-export async function searchCIJ(filters: SearchFilters): Promise<{ fallos: Fallo[]; total: number }> {
-  try {
-    const params = new URLSearchParams({ q: filters.query || "", tipo: "jurisprudencia" });
-    const res = await fetch(`https://www.cij.gov.ar/nota.html?${params}`, {
-      headers: { Accept: "text/html" },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!res.ok) throw new Error("CIJ no disponible");
-    const html = await res.text();
-    return parseCIJHtml(html, filters);
-  } catch {
-    return { fallos: [], total: 0 };
-  }
-}
-
-function parseCIJHtml(html: string, filters: SearchFilters): { fallos: Fallo[]; total: number } {
-  const fallos: Fallo[] = [];
-  const articleRegex = /<article[^>]*>([\s\S]*?)<\/article>/gi;
-  const titleRegex = /<h\d[^>]*>([\s\S]*?)<\/h\d>/i;
-  const dateRegex = /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/;
-  const linkRegex = /href="([^"]+)"/i;
-
-  let match;
-  let count = 0;
-
-  while ((match = articleRegex.exec(html)) !== null && count < 5) {
-    const block = match[1];
-    const titleMatch = block.match(titleRegex);
-    const dateMatch = block.match(dateRegex);
-    const linkMatch = block.match(linkRegex);
-
-    const titulo = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, "").trim() : `Nota CIJ ${count + 1}`;
-
-    fallos.push({
-      id: `cij-${count}-${Date.now()}`,
-      titulo,
-      fecha: dateMatch ? dateMatch[1] : "",
-      tribunal: "Poder Judicial de la Nación",
-      provincia: filters.provincia || "nacional",
-      fuero: filters.fuero || "federal",
-      materia: filters.materia || "",
-      sumario: "Información del Centro de Información Judicial del Poder Judicial de la Nación.",
-      url: linkMatch ? `https://www.cij.gov.ar${linkMatch[1]}` : "https://www.cij.gov.ar",
-      fuente: "CSJN",
-    });
-    count++;
-  }
-
-  return { fallos, total: fallos.length };
-}
-
-// ─── Microjuris (link-out) ────────────────────────────────────────────────────
-export function getMicrojurisUrl(filters: SearchFilters): string {
-  const params = new URLSearchParams({ q: filters.query || "" });
-  if (filters.materia) params.append("materia", filters.materia);
-  return `https://ar.microjuris.com/search?${params}`;
-}
+export const LAUNCH_SOURCES: LaunchSource[] = [
+  {
+    id: "csjn",
+    nombre: "CSJN",
+    mejorPara:
+      "Corte Suprema. Recursos extraordinarios, doctrina de arbitrariedad y citas oficiales «Fallos: tomo:página».",
+    icon: "⚖️",
+    color: "bg-blue-700",
+    // Portal SPA: no admite búsqueda por URL; se abre y se pega el término.
+    buildUrl: () => "https://sj.csjn.gov.ar/homeSJ/",
+  },
+  {
+    id: "saij",
+    nombre: "SAIJ",
+    mejorPara:
+      "Sistema Argentino de Información Jurídica. Gratuito. Jurisprudencia nacional y provincial, legislación y doctrina.",
+    icon: "📚",
+    color: "bg-green-700",
+    buildUrl: (q) => `https://www.saij.gob.ar/busqueda?t=${encodeURIComponent(q)}`,
+  },
+  {
+    id: "juba",
+    nombre: "JUBA",
+    mejorPara:
+      "Suprema Corte de Buenos Aires. La base provincial más completa: civil, laboral y familia bonaerense.",
+    icon: "🏛️",
+    color: "bg-purple-700",
+    buildUrl: () => "https://juba.scba.gov.ar/",
+  },
+  {
+    id: "cij",
+    nombre: "CIJ",
+    mejorPara:
+      "Centro de Información Judicial del PJN. Novedades, acordadas y fallos relevantes recientes.",
+    icon: "📰",
+    color: "bg-red-700",
+    buildUrl: () => "https://www.cij.gov.ar/buscador.html",
+  },
+];
 
 // ─── External premium/specialized sources ────────────────────────────────────
 export const EXTERNAL_SOURCES = [
@@ -129,7 +69,7 @@ export const EXTERNAL_SOURCES = [
     id: "csjn",
     nombre: "CSJN Jurisprudencia",
     descripcion: "Sistema de Jurisprudencia de la Corte Suprema (sj.csjn.gov.ar). Indispensable para recursos extraordinarios y doctrina de arbitrariedad.",
-    url: (q: string) => `https://sj.csjn.gov.ar/homeSJ/#/buscar?texto=${encodeURIComponent(q)}`,
+    url: (_q: string) => `https://sj.csjn.gov.ar/homeSJ/`,
     tipo: "publica",
     icon: "⚖️",
   },
@@ -145,7 +85,7 @@ export const EXTERNAL_SOURCES = [
     id: "cij",
     nombre: "CIJ",
     descripcion: "Centro de Información Judicial. Novedades judiciales, acordadas, fallos relevantes y seguimiento del PJN.",
-    url: (q: string) => `https://www.cij.gov.ar/nota.html?q=${encodeURIComponent(q)}`,
+    url: (_q: string) => `https://www.cij.gov.ar/buscador.html`,
     tipo: "publica",
     icon: "📰",
   },

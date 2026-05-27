@@ -7,8 +7,11 @@ const CSJN_BASE = "https://sjconsulta.csjn.gov.ar/sjconsulta";
 const CSJN_SEARCH = `${CSJN_BASE}/fallos/buscar.html`;
 const SAIJ_BASE = "https://www.saij.gob.ar";
 
-export function buildCSJNSearchUrl(query: string): string {
-  return `${CSJN_SEARCH}?q=${encodeURIComponent(query)}`;
+// Portal del Sistema de Jurisprudencia de la CSJN. El buscador es una SPA que
+// no admite búsqueda por querystring (buscar.html solo acepta POST), así que
+// enlazamos al portal oficial y el usuario pega el término allí.
+export function buildCSJNSearchUrl(_query: string): string {
+  return "https://sj.csjn.gov.ar/homeSJ/";
 }
 
 export async function searchCSJN(filters: SearchFilters): Promise<{ fallos: Fallo[]; total: number }> {

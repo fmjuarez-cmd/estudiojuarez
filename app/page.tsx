@@ -135,9 +135,10 @@ export default function HomePage() {
             </div>
             <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 text-center">
               <div className="text-3xl mb-3">📄</div>
-              <h3 className="font-semibold text-gray-800 mb-2">3. Accedé</h3>
+              <h3 className="font-semibold text-gray-800 mb-2">3. Abrí la fuente</h3>
               <p className="text-sm text-gray-600">
-                Leé el sumario, abrí el fallo completo o descargalo desde la fuente oficial.
+                Abrimos el buscador oficial de CSJN, SAIJ, JUBA o CIJ con tu término listo para
+                consultar los fallos reales.
               </p>
             </div>
           </div>
