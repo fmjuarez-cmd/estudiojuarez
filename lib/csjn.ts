@@ -1,27 +1,27 @@
 import type { Fallo, SearchFilters } from "./types";
 
-// CSJN — Sistema de Jurisprudencia (nuevo portal: https://sj.csjn.gov.ar/homeSJ/)
-// La SPA consume una API JSON; intentamos esa API y caemos a parsing HTML.
-const CSJN_BASE = "https://sj.csjn.gov.ar";
-export const CSJN_HOME = `${CSJN_BASE}/homeSJ/`;
+// CSJN — Secretaría de Jurisprudencia.
+// Portal de entrada: https://sj.csjn.gov.ar/homeSJ/
+// Buscador full-text "Todos los Fallos": sjconsulta.csjn.gov.ar/sjconsulta/fallos/buscar.html
+const CSJN_BASE = "https://sjconsulta.csjn.gov.ar/sjconsulta";
+const CSJN_SEARCH = `${CSJN_BASE}/fallos/buscar.html`;
 const SAIJ_BASE = "https://www.saij.gob.ar";
 
 export function buildCSJNSearchUrl(query: string): string {
-  // Ruta de búsqueda de la SPA (hash routing). El usuario llega con el término cargado.
-  return `${CSJN_HOME}#/buscar?texto=${encodeURIComponent(query)}`;
+  return `${CSJN_SEARCH}?q=${encodeURIComponent(query)}`;
 }
 
 export async function searchCSJN(filters: SearchFilters): Promise<{ fallos: Fallo[]; total: number }> {
   try {
     const params = new URLSearchParams({
-      texto: filters.query || "",
+      q: filters.query || "",
       pagina: String((filters.pagina || 1) - 1),
       cantidad: "10",
     });
     if (filters.fechaDesde) params.append("fechaDesde", filters.fechaDesde);
     if (filters.fechaHasta) params.append("fechaHasta", filters.fechaHasta);
 
-    const response = await fetch(`${CSJN_BASE}/sj/busqueda?${params}`, {
+    const response = await fetch(`${CSJN_SEARCH}?${params}`, {
       headers: {
         Accept: "application/json, text/html;q=0.9, */*;q=0.8",
         "X-Requested-With": "XMLHttpRequest",
@@ -38,6 +38,32 @@ export async function searchCSJN(filters: SearchFilters): Promise<{ fallos: Fall
     return { fallos: [], total: 0 };
   }
 }
+
+// Materias tal como las clasifica la CSJN → taxonomía interna (fuero + materia).
+const CSJN_MATERIA_MAP: Record<string, { fuero: string; materia: string }> = {
+  laboral: { fuero: "laboral", materia: "despido" },
+  "civil - comercial": { fuero: "civil", materia: "contratos" },
+  civil: { fuero: "civil", materia: "" },
+  comercial: { fuero: "comercial", materia: "" },
+  penal: { fuero: "penal", materia: "delitos" },
+  administrativo: { fuero: "contencioso_administrativo", materia: "" },
+  competencia: { fuero: "federal", materia: "" },
+  honorarios: { fuero: "civil", materia: "" },
+  originarios: { fuero: "federal", materia: "" },
+  "ddhh- institucional": { fuero: "constitucional", materia: "derechos_humanos" },
+  previsional: { fuero: "seguridad_social", materia: "previsional" },
+  tributario: { fuero: "federal", materia: "tributario" },
+};
+
+export function mapCSJNMateria(raw: string): { fuero: string; materia: string } {
+  const key = raw.toLowerCase().trim();
+  return CSJN_MATERIA_MAP[key] || { fuero: "federal", materia: detectMateria(raw) };
+}
+
+// Cita oficial de la CSJN, ej. "Fallos: 349:280"
+const CITA_FALLOS_RE = /Fallos:\s*(\d+):(\d+)/i;
+// Tipos de resolución que la CSJN muestra como línea aparte
+const RESOLUCION_RE = /\b(Inadmisible(?:\s*\(con voto\))?|Remisión|Improcedente|Desestimad[ao])/i;
 
 // Acepta tanto la respuesta JSON de la API nueva como HTML (fallback).
 export function parseCSJNResults(raw: string, query: string): { fallos: Fallo[]; total: number } {
@@ -65,17 +91,26 @@ function parseCSJNJson(data: unknown, query: string): { fallos: Fallo[]; total: 
   for (const item of list.slice(0, 10)) {
     const titulo =
       pickString(item, ["caratula", "titulo", "sumario", "voces"]) || "Fallo CSJN";
+    const materiaRaw = pickString(item, ["materia"]) || "";
+    const { fuero, materia } = materiaRaw
+      ? mapCSJNMateria(materiaRaw)
+      : { fuero: "federal", materia: detectMateria(titulo) };
+    const cita = pickString(item, ["citaFallos", "fallos", "cita"]);
+
     fallos.push({
       id: `csjn-${pickString(item, ["id", "uuid", "idFallo"]) || Math.random()}`,
       titulo,
       fecha: pickString(item, ["fecha", "fechaFallo", "fecha-alta"]) || "",
       tribunal: "Corte Suprema de Justicia de la Nación",
       provincia: "nacional",
-      fuero: "federal",
-      materia: pickString(item, ["materia"]) || detectMateria(titulo),
+      fuero,
+      materia,
       sumario: pickString(item, ["sumario", "resumen", "voces"]) || "",
       url: buildCSJNSearchUrl(query),
       fuente: "CSJN",
+      expediente: pickString(item, ["expediente", "numeroExpediente", "numero"]),
+      citaFallos: cita?.match(CITA_FALLOS_RE) ? cita.match(CITA_FALLOS_RE)![0] : cita,
+      resolucion: pickString(item, ["resolucion", "tipoResolucion"]),
     });
   }
 
@@ -86,32 +121,20 @@ function parseCSJNJson(data: unknown, query: string): { fallos: Fallo[]; total: 
 function parseCSJNHtml(html: string, query: string): { fallos: Fallo[]; total: number } {
   const fallos: Fallo[] = [];
 
-  const blockRegex = /class="resultados[^"]*"[\s\S]*?(?=class="resultados|$)/gi;
-  const titleRegex = /title="([^"]+)"/i;
-  const dateRegex = /(\d{2}\/\d{2}\/\d{4})/;
-  const linkRegex = /href="([^"]*(?:listarDocumentos|fallo)[^"]+)"/i;
+  // Cada resultado de buscar.html agrupa: fecha · expediente (+ cita Fallos) ·
+  // carátula · materia · (resolución). Tomamos los bloques por la fecha inicial.
+  const blockRegex = /class="resultado[^"]*"[\s\S]*?(?=class="resultado|$)/gi;
+  const linkRegex = /href="([^"]*(?:verFallo|listarDocumentos|fallo)[^"]+)"/i;
 
   const blocks = html.match(blockRegex) || [];
 
   for (let i = 0; i < Math.min(blocks.length, 10); i++) {
     const block = blocks[i];
-    const titleMatch = block.match(titleRegex);
-    const dateMatch = block.match(dateRegex);
-    const linkMatch = block.match(linkRegex);
-
-    if (titleMatch) {
-      fallos.push({
-        id: `csjn-${i}-${Date.now()}`,
-        titulo: titleMatch[1].trim(),
-        fecha: dateMatch ? dateMatch[1] : "",
-        tribunal: "Corte Suprema de Justicia de la Nación",
-        provincia: "nacional",
-        fuero: "federal",
-        materia: detectMateria(titleMatch[1]),
-        sumario: query ? `Fallo de la CSJN relacionado con: ${query}` : "Fallo de la CSJN",
-        url: linkMatch && linkMatch[1].startsWith("http") ? linkMatch[1] : buildCSJNSearchUrl(query),
-        fuente: "CSJN",
-      });
+    const fallo = parseCSJNBlock(stripTags(block), query);
+    if (fallo) {
+      const linkMatch = block.match(linkRegex);
+      if (linkMatch && linkMatch[1].startsWith("http")) fallo.url = linkMatch[1];
+      fallos.push({ ...fallo, id: `csjn-${i}-${Date.now()}` });
     }
   }
 
@@ -119,6 +142,61 @@ function parseCSJNHtml(html: string, query: string): { fallos: Fallo[]; total: n
   const total = totalMatch ? parseInt(totalMatch[1]) : fallos.length;
 
   return { fallos, total };
+}
+
+// Parser de un bloque de texto plano con la estructura real de un resultado CSJN.
+// Exportado para tests sobre la estructura provista por el sitio.
+export function parseCSJNBlock(text: string, query: string): Fallo | null {
+  const lines = text
+    .split(/\n|\r/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return null;
+
+  const dateMatch = text.match(/(\d{2}\/\d{2}\/\d{4})/);
+  const citaMatch = text.match(CITA_FALLOS_RE);
+  const resolucionMatch = text.match(RESOLUCION_RE);
+
+  // La carátula es la línea que contiene "c/" o "s/" (formato de autos).
+  const caratula = lines.find((l) => /\sc\/\s|\ss\/\s|c\/|s\//.test(l)) || lines[0];
+
+  // La materia es una de las categorías conocidas de la CSJN.
+  const materiaLine = lines.find((l) => CSJN_MATERIA_MAP[l.toLowerCase().trim()]);
+  const { fuero, materia } = materiaLine
+    ? mapCSJNMateria(materiaLine)
+    : { fuero: "federal", materia: detectMateria(caratula) };
+
+  // El expediente: línea con patrón tipo "CNT 057412/2016/1/RH001" o "U. 13. XLVIII. RHE".
+  const expedienteLine = lines.find(
+    (l) => /^[A-Z]{1,4}[\s.]\s*\d/.test(l) || /\b(REX|RHE|ROR|ORI|RH\d|CS\d|RHF)\b/.test(l)
+  );
+  const expediente = expedienteLine
+    ? expedienteLine.replace(CITA_FALLOS_RE, "").trim()
+    : undefined;
+
+  return {
+    id: `csjn-block`,
+    titulo: caratula.replace(/\s*\*\s*$/, "").trim(),
+    fecha: dateMatch ? dateMatch[1] : "",
+    tribunal: "Corte Suprema de Justicia de la Nación",
+    provincia: "nacional",
+    fuero,
+    materia,
+    sumario: query ? `Fallo de la CSJN relacionado con: ${query}` : "Fallo de la CSJN",
+    url: buildCSJNSearchUrl(query),
+    fuente: "CSJN",
+    expediente,
+    citaFallos: citaMatch ? citaMatch[0] : undefined,
+    resolucion: resolucionMatch ? resolucionMatch[0] : undefined,
+  };
+}
+
+function stripTags(html: string): string {
+  return html
+    .replace(/<(br|\/p|\/div|\/li|\/h\d|\/td|\/tr)[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
 }
 
 export async function searchSAIJ(filters: SearchFilters): Promise<{ fallos: Fallo[]; total: number }> {

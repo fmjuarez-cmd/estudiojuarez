@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   parseSAIJResponse,
   parseCSJNResults,
+  parseCSJNBlock,
+  mapCSJNMateria,
   detectMateria,
   mapProvinciaToSAIJ,
   generateDemoResults,
@@ -142,6 +144,105 @@ describe("parseCSJNResults — parsing HTML de CSJN", () => {
 
   it("devuelve vacío ante HTML sin resultados", () => {
     expect(parseCSJNResults("<html><body>nada</body></html>", "x").fallos).toEqual([]);
+  });
+});
+
+describe("parseCSJNBlock — estructura real de resultados CSJN", () => {
+  // Bloque real provisto del buscador de la CSJN
+  it("extrae fecha, expediente, cita Fallos, carátula y materia (caso laboral)", () => {
+    const block = `31/03/2026
+CNT 057412/2016/1/RH001  Fallos: 349:280
+Recurso Queja Nº 1 - RUIZ, DANIEL c/ ADMINISTRACION GENERAL DE INGRESOS PUBLICOS s/OTRAS IND. PREV. EN EST.
+Laboral`;
+    const fallo = parseCSJNBlock(block, "ruiz")!;
+    expect(fallo).not.toBeNull();
+    expect(fallo.fecha).toBe("31/03/2026");
+    expect(fallo.citaFallos).toBe("Fallos: 349:280");
+    expect(fallo.titulo).toContain("RUIZ, DANIEL");
+    expect(fallo.expediente).toContain("CNT 057412/2016/1/RH001");
+    expect(fallo.fuero).toBe("laboral");
+    expect(fallo.provincia).toBe("nacional");
+    expect(fallo.fuente).toBe("CSJN");
+  });
+
+  it("captura el tipo de resolución (Inadmisible con voto)", () => {
+    const block = `21/10/2021
+COM 027089/2017/14/CS001  Fallos: 344:2955
+TELEPIU S.A S/ INCIDENTE ART. 250  *
+Civil - Comercial
+Inadmisible (con voto)`;
+    const fallo = parseCSJNBlock(block, "")!;
+    expect(fallo.citaFallos).toBe("Fallos: 344:2955");
+    expect(fallo.resolucion).toBe("Inadmisible (con voto)");
+    expect(fallo.fuero).toBe("civil");
+    expect(fallo.titulo).not.toContain("*"); // limpia el asterisco final
+  });
+
+  it("maneja expedientes con formato antiguo (U. 13. XLVIII. RHE)", () => {
+    const block = `06/02/2018
+U. 13. XLVIII. RHE  Fallos: 341:84
+Universidad Nacional de Rosario c/ Calarota, Luis Raúl s/ exclusión de tutela sindical
+Laboral`;
+    const fallo = parseCSJNBlock(block, "")!;
+    expect(fallo.citaFallos).toBe("Fallos: 341:84");
+    expect(fallo.titulo).toContain("Universidad Nacional de Rosario");
+    expect(fallo.fuero).toBe("laboral");
+  });
+
+  it("capta 'Remisión' y materia Administrativo", () => {
+    const block = `30/12/2014
+H. 73. L. ROR
+Harrington, Patricio c/ DGI y otro s/D.G.I. Tribunal Fiscal
+Administrativo
+Remisión`;
+    const fallo = parseCSJNBlock(block, "")!;
+    expect(fallo.resolucion).toBe("Remisión");
+    expect(fallo.fuero).toBe("contencioso_administrativo");
+    expect(fallo.citaFallos).toBeUndefined();
+  });
+
+  it("devuelve null ante bloque vacío", () => {
+    expect(parseCSJNBlock("   \n  ", "x")).toBeNull();
+  });
+});
+
+describe("mapCSJNMateria", () => {
+  it.each([
+    ["Laboral", "laboral"],
+    ["Civil - Comercial", "civil"],
+    ["Administrativo", "contencioso_administrativo"],
+    ["Penal", "penal"],
+    ["DDHH- Institucional", "constitucional"],
+    ["Competencia", "federal"],
+  ])("mapea materia CSJN '%s' a fuero '%s'", (raw, fuero) => {
+    expect(mapCSJNMateria(raw).fuero).toBe(fuero);
+  });
+
+  it("materia desconocida cae a federal + detección por texto", () => {
+    expect(mapCSJNMateria("Originarios").fuero).toBe("federal");
+  });
+});
+
+describe("parseCSJNResults (JSON de la API)", () => {
+  it("parsea respuesta JSON con cita y materia", () => {
+    const json = JSON.stringify({
+      total: 5,
+      resultados: [
+        {
+          id: "f1",
+          caratula: "Pérez c/ Estado s/ despido",
+          fecha: "15/03/2024",
+          materia: "Laboral",
+          citaFallos: "Fallos: 347:123",
+          expediente: "CNT 1234/2020/RH001",
+        },
+      ],
+    });
+    const { fallos, total } = parseCSJNResults(json, "perez");
+    expect(total).toBe(5);
+    expect(fallos[0].citaFallos).toBe("Fallos: 347:123");
+    expect(fallos[0].fuero).toBe("laboral");
+    expect(fallos[0].expediente).toBe("CNT 1234/2020/RH001");
   });
 });
 

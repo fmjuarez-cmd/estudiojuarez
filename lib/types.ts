@@ -11,6 +11,8 @@ export interface Fallo {
   url?: string;
   fuente: "CSJN" | "SAIJ" | "Provincial";
   expediente?: string;
+  citaFallos?: string; // cita oficial "Fallos: tomo:página", ej. 349:280
+  resolucion?: string; // tipo de resolución: Inadmisible, Remisión, etc.
 }
 
 export interface SearchFilters {

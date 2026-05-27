@@ -53,8 +53,18 @@ export default function ResultCard({ fallo, queryTerms = [] }: ResultCardProps) 
               📅 {fallo.fecha}
             </span>
           )}
+          {fallo.citaFallos && (
+            <span className="text-xs font-semibold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-1 rounded-full">
+              📖 {fallo.citaFallos}
+            </span>
+          )}
+          {fallo.resolucion && (
+            <span className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">
+              {fallo.resolucion}
+            </span>
+          )}
           {fallo.expediente && (
-            <span className="text-xs text-gray-500">Exp: {fallo.expediente}</span>
+            <span className="text-xs text-gray-500 font-mono">Exp: {fallo.expediente}</span>
           )}
         </div>
       </div>
