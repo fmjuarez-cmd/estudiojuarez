@@ -13,8 +13,15 @@ export function buildCSJNSearchUrl(query: string): string {
 
 export async function searchCSJN(filters: SearchFilters): Promise<{ fallos: Fallo[]; total: number }> {
   try {
+    const query = filters.query || "";
+    // No conocemos con certeza el nombre exacto del parámetro de búsqueda del
+    // buscador de la CSJN, así que enviamos el término bajo varios alias
+    // comunes; el servidor usa el que reconoce e ignora el resto.
     const params = new URLSearchParams({
-      q: filters.query || "",
+      q: query,
+      palabrasClave: query,
+      texto: query,
+      buscar: query,
       pagina: String((filters.pagina || 1) - 1),
       cantidad: "10",
     });
@@ -32,7 +39,7 @@ export async function searchCSJN(filters: SearchFilters): Promise<{ fallos: Fall
     if (!response.ok) throw new Error("CSJN no disponible");
 
     const text = await response.text();
-    return parseCSJNResults(text, filters.query || "");
+    return parseCSJNResults(text, query);
   } catch {
     // Return empty on network error so other sources can still work
     return { fallos: [], total: 0 };
