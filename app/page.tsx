@@ -56,7 +56,7 @@ const TRIBUNALES = [
   {
     nombre: "Jurídica",
     descripcion: "IA jurídica — integra SAIJ + CSJN + JUBA",
-    href: "https://juridica.com.ar",
+    href: "https://juridica.ar",
     color: "bg-indigo-700",
     icon: "🤖",
     badge: null,
