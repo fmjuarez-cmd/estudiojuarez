@@ -66,20 +66,16 @@ export default function SearchLauncher({ query, filterChips }: SearchLauncherPro
       </div>
 
       {/* Cómo usar el lanzador */}
-      <div className="flex items-start gap-3 mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-900">
-        <span className="text-lg shrink-0">💡</span>
-        <p>
-          Los organismos oficiales muestran sus fallos solo dentro de su propio buscador.
-          <strong> SAIJ y CIJ</strong> abren directamente con tu búsqueda hecha.
-          <strong> CSJN y JUBA</strong> usan buscadores que no aceptan búsqueda por enlace: se
-          abre el buscador y pegás el término (ya queda{" "}
-          <button onClick={copyQuery} className="underline font-medium hover:text-blue-700">
-            copiado
-          </button>
-          , <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded text-xs">Ctrl</kbd>+
-          <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded text-xs">V</kbd>).
-        </p>
-      </div>
+      <p className="text-xs text-gray-500 mb-4">
+        Tocá una fuente para buscar. SAIJ y CIJ abren con tu búsqueda; para CSJN y JUBA pegá
+        el término con{" "}
+        <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Ctrl+V</kbd>
+        {" "}(ya queda{" "}
+        <button onClick={copyQuery} className="underline text-blue-600 hover:text-blue-800">
+          copiado
+        </button>
+        ).
+      </p>
 
       {/* Fuentes oficiales primarias */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
