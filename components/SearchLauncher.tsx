@@ -69,13 +69,15 @@ export default function SearchLauncher({ query, filterChips }: SearchLauncherPro
       <div className="flex items-start gap-3 mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-900">
         <span className="text-lg shrink-0">💡</span>
         <p>
-          Estos organismos oficiales muestran sus fallos solo dentro de su propio buscador.
-          Al tocar una fuente se abre su sitio en una pestaña nueva. Tu término ya queda{" "}
+          Los organismos oficiales muestran sus fallos solo dentro de su propio buscador.
+          <strong> SAIJ y CIJ</strong> abren directamente con tu búsqueda hecha.
+          <strong> CSJN y JUBA</strong> usan buscadores que no aceptan búsqueda por enlace: se
+          abre el buscador y pegás el término (ya queda{" "}
           <button onClick={copyQuery} className="underline font-medium hover:text-blue-700">
             copiado
-          </button>{" "}
-          — si no aparece cargado, pegalo con <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded text-xs">Ctrl</kbd>+
-          <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded text-xs">V</kbd>.
+          </button>
+          , <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded text-xs">Ctrl</kbd>+
+          <kbd className="px-1 py-0.5 bg-white border border-blue-200 rounded text-xs">V</kbd>).
         </p>
       </div>
 
@@ -96,20 +98,29 @@ export default function SearchLauncher({ query, filterChips }: SearchLauncherPro
               {s.icon}
             </span>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-bold text-gray-900 group-hover:text-blue-700">{s.nombre}</h3>
+                {s.precarga ? (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
+                    Abre con tu búsqueda
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                    Pegá el término
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 leading-snug mt-0.5">{s.mejorPara}</p>
+              <p className="text-xs text-blue-600 font-medium mt-1.5 group-hover:underline inline-flex items-center gap-1">
+                {s.precarga ? "Ver resultados en" : "Abrir buscador de"} {s.nombre}
                 <svg
-                  className="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-600"
+                  className="w-3.5 h-3.5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
-              </div>
-              <p className="text-xs text-gray-500 leading-snug mt-0.5">{s.mejorPara}</p>
-              <p className="text-xs text-blue-600 font-medium mt-1.5 group-hover:underline">
-                Abrir buscador oficial →
               </p>
             </div>
           </a>
