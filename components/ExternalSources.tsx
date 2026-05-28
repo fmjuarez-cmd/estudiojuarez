@@ -9,43 +9,30 @@ interface ExternalSourcesProps {
 
 export default function ExternalSources({ query }: ExternalSourcesProps) {
   const [showAll, setShowAll] = useState(false);
-  const publicas = EXTERNAL_SOURCES.filter((s) => s.tipo === "publica");
   const premium = EXTERNAL_SOURCES.filter((s) => s.tipo === "premium");
   const visiblePremium = showAll ? premium : premium.slice(0, 4);
 
   return (
     <div className="mt-8 border-t border-gray-200 pt-6">
-      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-        Buscar también en otras fuentes
+      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
+        Plataformas especializadas
       </h3>
-
-      {/* Fuentes públicas */}
-      <div className="mb-4">
-        <p className="text-xs font-medium text-green-700 mb-2">🟢 Gratuitas / Oficiales</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {publicas.map((s) => (
-            <SourceLink key={s.id} source={s} query={query} />
-          ))}
-        </div>
+      <p className="text-xs text-gray-500 mb-3">
+        Buscadores privados con IA y suscripción. La mayoría abre con tu búsqueda ya cargada.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {visiblePremium.map((s) => (
+          <SourceLink key={s.id} source={s} query={query} />
+        ))}
       </div>
-
-      {/* Fuentes premium */}
-      <div>
-        <p className="text-xs font-medium text-amber-700 mb-2">⭐ Plataformas especializadas / Premium</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {visiblePremium.map((s) => (
-            <SourceLink key={s.id} source={s} query={query} />
-          ))}
-        </div>
-        {premium.length > 4 && (
-          <button
-            onClick={() => setShowAll(!showAll)}
-            className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-          >
-            {showAll ? "Ver menos" : `Ver ${premium.length - 4} fuentes más →`}
-          </button>
-        )}
-      </div>
+      {premium.length > 4 && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+        >
+          {showAll ? "Ver menos" : `Ver ${premium.length - 4} fuentes más →`}
+        </button>
+      )}
     </div>
   );
 }

@@ -10,22 +10,15 @@ export interface LaunchSource {
   mejorPara: string;
   icon: string;
   color: string;
-  // URL del buscador oficial. Se le pasa el término por si el sitio lo
-  // pre-carga; si no, el usuario lo pega (queda copiado al portapapeles).
+  // true: el sitio acepta la búsqueda por URL y abre directamente los
+  // resultados. false: es una SPA o formulario que no admite búsqueda por
+  // enlace, así que se abre el buscador y el usuario pega el término.
+  precarga: boolean;
   buildUrl: (query: string) => string;
 }
 
+// Las fuentes que abren directo con los resultados van primero.
 export const LAUNCH_SOURCES: LaunchSource[] = [
-  {
-    id: "csjn",
-    nombre: "CSJN",
-    mejorPara:
-      "Corte Suprema. Recursos extraordinarios, doctrina de arbitrariedad y citas oficiales «Fallos: tomo:página».",
-    icon: "⚖️",
-    color: "bg-blue-700",
-    // Portal SPA: no admite búsqueda por URL; se abre y se pega el término.
-    buildUrl: () => "https://sj.csjn.gov.ar/homeSJ/",
-  },
   {
     id: "saij",
     nombre: "SAIJ",
@@ -33,16 +26,9 @@ export const LAUNCH_SOURCES: LaunchSource[] = [
       "Sistema Argentino de Información Jurídica. Gratuito. Jurisprudencia nacional y provincial, legislación y doctrina.",
     icon: "📚",
     color: "bg-green-700",
-    buildUrl: (q) => `https://www.saij.gob.ar/busqueda?t=${encodeURIComponent(q)}`,
-  },
-  {
-    id: "juba",
-    nombre: "JUBA",
-    mejorPara:
-      "Suprema Corte de Buenos Aires. La base provincial más completa: civil, laboral y familia bonaerense.",
-    icon: "🏛️",
-    color: "bg-purple-700",
-    buildUrl: () => "https://juba.scba.gov.ar/",
+    precarga: true,
+    buildUrl: (q) =>
+      `https://www.saij.gob.ar/resultados.jsp?f=Total%7CTipo+de+Documento/Jurisprudencia&t=${encodeURIComponent(q)}&v=colapsada`,
   },
   {
     id: "cij",
@@ -51,44 +37,37 @@ export const LAUNCH_SOURCES: LaunchSource[] = [
       "Centro de Información Judicial del PJN. Novedades, acordadas y fallos relevantes recientes.",
     icon: "📰",
     color: "bg-red-700",
-    buildUrl: () => "https://www.cij.gov.ar/buscador.html",
-  },
-];
-
-// ─── External premium/specialized sources ────────────────────────────────────
-export const EXTERNAL_SOURCES = [
-  {
-    id: "saij",
-    nombre: "SAIJ",
-    descripcion: "Sistema Argentino de Información Jurídica. Gratuito. Jurisprudencia nacional y provincial + legislación + doctrina.",
-    url: (q: string) => `https://www.saij.gob.ar/busqueda-basica?palabras-clave=${encodeURIComponent(q)}&tipo=jurisprudencia`,
-    tipo: "publica",
-    icon: "📚",
+    precarga: true,
+    buildUrl: (q) => `https://www.cij.gov.ar/buscador.html?acc=search&search=${encodeURIComponent(q)}`,
   },
   {
     id: "csjn",
-    nombre: "CSJN Jurisprudencia",
-    descripcion: "Sistema de Jurisprudencia de la Corte Suprema (sj.csjn.gov.ar). Indispensable para recursos extraordinarios y doctrina de arbitrariedad.",
-    url: (_q: string) => `https://sj.csjn.gov.ar/homeSJ/`,
-    tipo: "publica",
+    nombre: "CSJN",
+    mejorPara:
+      "Corte Suprema. Recursos extraordinarios, doctrina de arbitrariedad y citas oficiales «Fallos: tomo:página».",
     icon: "⚖️",
+    color: "bg-blue-700",
+    // Portal SPA: no admite búsqueda por URL; se abre y se pega el término.
+    precarga: false,
+    buildUrl: (_q) => "https://sj.csjn.gov.ar/homeSJ/",
   },
   {
     id: "juba",
     nombre: "JUBA",
-    descripcion: "Base provincial más completa del país. Suprema Corte de Buenos Aires. Fundamental para civil, laboral y familia bonaerense.",
-    url: (q: string) => `https://juba.scba.gov.ar/VerTextoCompleto.aspx?textoBusqueda=${encodeURIComponent(q)}`,
-    tipo: "publica",
+    mejorPara:
+      "Suprema Corte de Buenos Aires. La base provincial más completa: civil, laboral y familia bonaerense.",
     icon: "🏛️",
+    color: "bg-purple-700",
+    // Formulario ASP.NET con operadores: no admite búsqueda por URL.
+    precarga: false,
+    buildUrl: (_q) => "https://juba.scba.gov.ar/busquedas.aspx",
   },
-  {
-    id: "cij",
-    nombre: "CIJ",
-    descripcion: "Centro de Información Judicial. Novedades judiciales, acordadas, fallos relevantes y seguimiento del PJN.",
-    url: (_q: string) => `https://www.cij.gov.ar/buscador.html`,
-    tipo: "publica",
-    icon: "📰",
-  },
+];
+
+// ─── Plataformas premium/especializadas (link-out con búsqueda precargada) ───
+// Las fuentes oficiales gratuitas (SAIJ, CSJN, JUBA, CIJ) están en
+// LAUNCH_SOURCES; acá quedan las plataformas privadas con suscripción.
+export const EXTERNAL_SOURCES = [
   {
     id: "microjuris",
     nombre: "Microjuris",
